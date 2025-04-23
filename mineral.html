@@ -109,6 +109,7 @@
 
         const apiKey = 'AIzaSyCuxBB6YRLRSP4lquFvOAn3maFtJQQrVZs';
         const folderId = '1SGH3GtEY-AQ0NtceQI9HW8rdkWANIjqa';
+        const driveBaseUrl = 'https://www.googleapis.com/drive/v3/files/';
 
         let scene, camera, renderer, controls;
         let currentModel;
@@ -221,12 +222,27 @@
                             loadingContainer.style.display = 'block'; // 点击时显示加载提示
                             loadingContainer.querySelector('#loading-status').textContent = 'Loading...'; // 显示加载中
                             try {
-                                const fileResponse = await gapi.client.drive.files.get({
-                                    fileId: file.id,
-                                    alt: 'media'
+                                // 使用fetch获取文件内容，处理大文件和gzip压缩
+                                const fileUrl = `${driveBaseUrl}${file.id}?alt=media&key=${apiKey}`;
+                                const response = await fetch(fileUrl, {
+                                    headers: {
+                                        'Accept-Encoding': 'gzip, deflate'
+                                    }
                                 });
-                                console.log('Full API response for files.get:', fileResponse);
-                                loadOBJ(fileResponse.body);
+
+                                let fileContent;
+                                if (response.headers.get('content-encoding') === 'gzip') {
+                                    const reader = new ResponseReader(response);
+                                    fileContent = await reader.text();
+                                } else {
+                                    fileContent = await response.text();
+                                }
+
+                                if (!fileContent.trim()) {
+                                    throw new Error('File content is empty');
+                                }
+
+                                loadOBJ(fileContent);
                                 loadingContainer.querySelector('#loading-status').textContent = 'Loading Complete'; // 加载完成后显示完成
                                 // 3秒后自动隐藏加载提示（可根据需求调整）
                                 setTimeout(() => {
@@ -235,6 +251,7 @@
                             } catch (error) {
                                 loadingContainer.style.display = 'none'; // 出错时隐藏加载提示
                                 errorMessage.textContent = `Error loading file: ${error.message}`;
+                                console.error('File loading error:', error);
                             }
                         });
                         listItem.appendChild(linkElement);
@@ -254,6 +271,28 @@
             } catch (error) {
                 loadingContainer.style.display = 'none'; // 出错时隐藏加载提示
                 errorMessage.textContent = `Error fetching folder contents: ${error.message}`;
+                console.error('Folder loading error:', error);
+            }
+        }
+
+        class ResponseReader {
+            constructor(response) {
+                this.response = response;
+            }
+
+            async text() {
+                const reader = this.response.body.getReader();
+                const decoder = new TextDecoder('utf-8');
+                let result = [];
+                let done = false;
+
+                while (!done) {
+                    const { value, done: doneReading } = await reader.read();
+                    done = doneReading;
+                    result.push(decoder.decode(value, { stream: !done }));
+                }
+
+                return result.join('');
             }
         }
 
