@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css" rel="stylesheet">
+    <title>3D OBJ Viewer from Google Drive Public Folder</title>
+    <style>
+        #viewer-container {
+            width: 100%;
+            height: 600px;
+        }
+
+        #progress-bar {
+            width: 100%;
+            background-color: #f3f3f3;
+            border-radius: 5px;
+            margin-top: 10px;
+            display: none;
+        }
+
+        #progress {
+            width: 0%;
+            height: 30px;
+            background-color: #4CAF50;
+            text-align: center;
+            line-height: 30px;
+            color: white;
+            border-radius: 5px;
+        }
+
+        #error-message {
+            color: red;
+            margin-top: 10px;
+        }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/loaders/OBJLoader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/controls/OrbitControls.js"></script>
+    <script async defer src="https://apis.google.com/js/api.js"
+        onload="this.onload = function () { } ;handleClientLoad()"
+        onreadystatechange="if (this.readyState === 'complete') this.onload()">
+    </script>
+</head>
+
+<body class="bg-gray-100">
+    <div class="container mx-auto p-8">
+        <h1 class="text-3xl font-bold mb-4">Load 3D OBJ Files from Public Google Drive Folder</h1>
+        <ul id="file-list"></ul>
+        <div id="progress-bar">
+            <div id="progress">0%</div>
+        </div>
+        <p id="error-message"></p>
+        <div id="viewer-container" class="mt-8 border border-gray-300"></div>
+    </div>
+
+    <script>
+        const fileList = document.getElementById('file-list');
+        const viewerContainer = document.getElementById('viewer-container');
+        const progressBar = document.getElementById('progress-bar');
+        const progress = document.getElementById('progress');
+        const errorMessage = document.getElementById('error-message');
+
+        const apiKey = 'AIzaSyCuxBB6YRLRSP4lquFvOAn3maFtJQQrVZs';
+        const folderId = '1I5qgJ-67c_3yqYKSjFIqfCCcsORHQIiG';
+
+        let scene, camera, renderer, controls;
+        let currentModel;
+
+        function init() {
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(75, viewerContainer.clientWidth / viewerContainer.clientHeight, 0.1, 1000);
+            renderer = new THREE.WebGLRenderer();
+            renderer.setSize(viewerContainer.clientWidth, viewerContainer.clientHeight);
+            viewerContainer.appendChild(renderer.domElement);
+
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+            scene.add(ambientLight);
+
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            directionalLight.position.set(1, 1, 1);
+            scene.add(directionalLight);
+
+            camera.position.z = 5;
+
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+        }
+
+        function loadOBJ(data) {
+            progressBar.style.display = 'none';
+            errorMessage.textContent = '';
+            if (currentModel) {
+                scene.remove(currentModel);
+            }
+            const loader = new THREE.OBJLoader();
+            const object = loader.parse(data);
+            currentModel = object;
+            scene.add(object);
+            animate();
+        }
+
+        function clearModel() {
+            if (currentModel) {
+                scene.remove(currentModel);
+                currentModel = null;
+                renderer.render(scene, camera);
+            }
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        function handleClientLoad() {
+            gapi.load('client', initClient);
+        }
+
+        function initClient() {
+            gapi.client.init({
+                apiKey: apiKey,
+                discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/drive/v3/rest']
+            }).then(() => {
+                console.log('Google API client initialized');
+                loadFolder();
+            }).catch((error) => {
+                console.error('Error initializing Google API client:', error);
+            });
+        }
+
+        async function loadFolder() {
+            progressBar.style.display = 'block';
+            errorMessage.textContent = '';
+            try {
+                const response = await gapi.client.drive.files.list({
+                    q: `'${folderId}' in parents and (mimeType contains 'application' or mimeType contains 'text')`,
+                    fields: 'files(id, name, mimeType)'
+                });
+                console.log('Full API response for files.list:', response);
+                const files = response.result.files;
+                if (files.length > 0) {
+                    fileList.innerHTML = '';
+                    files.forEach((file) => {
+                        if (file.name.endsWith('.obj')) {
+                            const listItem = document.createElement('li');
+                            const linkElement = document.createElement('a');
+                            linkElement.textContent = file.name;
+                            linkElement.href = '#';
+                            linkElement.addEventListener('click', async function (e) {
+                                e.preventDefault();
+                                progressBar.style.display = 'block';
+                                errorMessage.textContent = '';
+                                try {
+                                    const fileResponse = await gapi.client.drive.files.get({
+                                        fileId: file.id,
+                                        alt: 'media'
+                                    });
+                                    console.log('Full API response for files.get:', fileResponse);
+                                    loadOBJ(fileResponse.body);
+                                } catch (error) {
+                                    progressBar.style.display = 'none';
+                                    errorMessage.textContent = `Error loading file: ${error.message}`;
+                                }
+                            });
+                            listItem.appendChild(linkElement);
+                            fileList.appendChild(listItem);
+                        }
+                    });
+                    if (fileList.children.length === 0) {
+                        errorMessage.textContent = 'No OBJ files found in the folder.';
+                    }
+                } else {
+                    errorMessage.textContent = 'No files found in the folder.';
+                }
+                progressBar.style.display = 'none';
+            } catch (error) {
+                progressBar.style.display = 'none';
+                errorMessage.textContent = `Error fetching folder contents: ${error.message}`;
+            }
+        }
+
+        init();
+        handleClientLoad();
+    </script>
+</body>
+
+</html>
+    
