@@ -138,14 +138,12 @@
             controls.dampingFactor = 0.05;
         }
 
-        function loadOBJ(data) {
+        function loadOBJ(object) {
             loadingContainer.style.display = 'none'; // 加载完成后隐藏加载提示
             errorMessage.textContent = '';
             if (currentModel) {
                 scene.remove(currentModel);
             }
-            const loader = new THREE.OBJLoader();
-            const object = loader.parse(data);
             currentModel = object;
 
             // Calculate the bounding box of the object
@@ -219,6 +217,7 @@
                         linkElement.href = '#';
                         linkElement.addEventListener('click', async function (e) {
                             e.preventDefault();
+                            clearModel(); // 清除之前的模型
                             loadingContainer.style.display = 'block'; // 点击时显示加载提示
                             loadingContainer.querySelector('#loading-status').textContent = 'Loading...'; // 显示加载中
                             try {
@@ -230,19 +229,60 @@
                                     }
                                 });
 
-                                let fileContent;
-                                if (response.headers.get('content-encoding') === 'gzip') {
-                                    const reader = new ResponseReader(response);
-                                    fileContent = await reader.text();
-                                } else {
-                                    fileContent = await response.text();
+                                const loader = new THREE.OBJLoader();
+                                const reader = response.body.getReader();
+                                const decoder = new TextDecoder('utf-8');
+                                let buffer = '';
+
+                                while (true) {
+                                    const { value, done } = await reader.read();
+                                    if (done) break;
+                                    buffer += decoder.decode(value, { stream: true });
+                                    // 尝试解析部分数据
+                                    try {
+                                        const partialObject = loader.parse(buffer);
+                                        if (partialObject.children.length > 0) {
+                                            if (!currentModel) {
+                                                currentModel = partialObject;
+                                                scene.add(currentModel);
+                                            } else {
+                                                partialObject.children.forEach(child => {
+                                                    currentModel.add(child);
+                                                });
+                                            }
+                                            buffer = '';
+                                        }
+                                    } catch (parseError) {
+                                        // 可能数据不完整，继续等待更多数据
+                                    }
                                 }
 
-                                if (!fileContent.trim()) {
+                                // 处理剩余数据
+                                if (buffer) {
+                                    const remainingObject = loader.parse(buffer);
+                                    remainingObject.children.forEach(child => {
+                                        currentModel.add(child);
+                                    });
+                                }
+
+                                if (!currentModel) {
                                     throw new Error('File content is empty');
                                 }
 
-                                loadOBJ(fileContent);
+                                // 调整模型位置和相机
+                                const box = new THREE.Box3().setFromObject(currentModel);
+                                const center = box.getCenter(new THREE.Vector3());
+                                const size = box.getSize(new THREE.Vector3());
+                                currentModel.position.sub(center);
+                                const maxSize = Math.max(size.x, size.y, size.z);
+                                const fitHeightDistance = maxSize / (2 * Math.atan((Math.PI * camera.fov) / 360));
+                                const fitWidthDistance = fitHeightDistance / camera.aspect;
+                                const distance = Math.max(fitHeightDistance, fitWidthDistance);
+                                camera.position.z = distance;
+                                camera.lookAt(new THREE.Vector3());
+
+                                animate();
+
                                 loadingContainer.querySelector('#loading-status').textContent = 'Loading Complete'; // 加载完成后显示完成
                                 // 3秒后自动隐藏加载提示（可根据需求调整）
                                 setTimeout(() => {
@@ -275,27 +315,6 @@
             }
         }
 
-        class ResponseReader {
-            constructor(response) {
-                this.response = response;
-            }
-
-            async text() {
-                const reader = this.response.body.getReader();
-                const decoder = new TextDecoder('utf-8');
-                let result = [];
-                let done = false;
-
-                while (!done) {
-                    const { value, done: doneReading } = await reader.read();
-                    done = doneReading;
-                    result.push(decoder.decode(value, { stream: !done }));
-                }
-
-                return result.join('');
-            }
-        }
-
         nextColumnsButton.addEventListener('click', function () {
             currentOffset += columnsToShow * itemsPerColumn;
             loadFolder();
@@ -307,3 +326,4 @@
 </body>
 
 </html>
+    
