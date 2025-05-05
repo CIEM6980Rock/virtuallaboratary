@@ -65,6 +65,16 @@
             cursor: pointer;
         }
 
+        #previous-columns-button {
+            display: none;
+            background-color: #D9C79B;
+            color: blue;
+            padding: 10px;
+            border-radius: 5px;
+            margin-top: 20px;
+            cursor: pointer;
+        }
+
         #file-list {
             column-count: 3;
             column-gap: 20px;
@@ -83,6 +93,7 @@
     <div class="container mx-auto p-8">
         <h1 class="text-3xl font-bold mb-4">Virtual Rock Laboratory</h1>
         <ul id="file-list"></ul>
+        <button id="previous-columns-button">View Previous 3 Columns</button>
         <button id="next-columns-button">View Next 3 Columns</button>
         <p id="instructions">
             To view the 3D model:
@@ -105,6 +116,7 @@
         const progress = document.getElementById('progress');
         const errorMessage = document.getElementById('error-message');
         const nextColumnsButton = document.getElementById('next-columns-button');
+        const previousColumnsButton = document.getElementById('previous-columns-button');
         const loadingContainer = document.getElementById('loading-container'); // 新增加载容器引用
 
         const apiKey = 'AIzaSyCuxBB6YRLRSP4lquFvOAn3maFtJQQrVZs';
@@ -114,7 +126,7 @@
         let scene, camera, renderer, controls;
         let currentModel;
         let currentOffset = 0;
-        const itemsPerColumn = 5;
+        const itemsPerColumn = 4;
         const columnsToShow = 3;
 
         function init() {
@@ -144,7 +156,6 @@
             const loader = new THREE.OBJLoader();
             const object = loader.parse(data);
             currentModel = object;
-   
 
             // Calculate the bounding box of the object
             const box = new THREE.Box3().setFromObject(object);
@@ -260,6 +271,11 @@
                     } else {
                         nextColumnsButton.style.display = 'none';
                     }
+                    if (currentOffset > 0) {
+                        previousColumnsButton.style.display = 'block';
+                    } else {
+                        previousColumnsButton.style.display = 'none';
+                    }
                     if (fileList.children.length === 0) {
                         errorMessage.textContent = 'No OBJ files found in the folder.';
                     }
@@ -299,9 +315,15 @@
             loadFolder();
         });
 
+        previousColumnsButton.addEventListener('click', function () {
+            currentOffset -= columnsToShow * itemsPerColumn;
+            loadFolder();
+        });
+
         init();
         handleClientLoad();
     </script>
 </body>
 
 </html>
+    
