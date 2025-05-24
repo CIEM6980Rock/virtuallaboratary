@@ -566,12 +566,8 @@
                             viewerContainer.appendChild(this.renderer.domElement);
                             
                             // 添加环境光和方向光以获得更好的渲染效果
-                            const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+                            const ambientLight = new THREE.AmbientLight(0xffffff);
                             this.scene.add(ambientLight);
-                            
-                            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-                            directionalLight.position.set(1, 1, 1);
-                            this.scene.add(directionalLight);
                             
                             this.camera.position.z = 5;
                             
