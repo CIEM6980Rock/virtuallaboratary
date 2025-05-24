@@ -48,7 +48,13 @@
             padding: 10px;
             border-radius: 5px;
         }
-
+        a {
+            display: inline-block;
+            background-color: #9efff5;
+            color: black;
+            padding: 4px;
+            border-radius: 5px;
+        }
         #instructions {
             margin-top: 20px;
             margin-bottom: 20px;
@@ -90,7 +96,10 @@
 
 <body class="bg-gray-100">
     <div class="container mx-auto p-8">
-        <h1 class="text-3xl font-bold mb-4">Virtual Rock Laboratory</h1>
+        <ul>
+            <li><a href="index.html">Home Page</a></li>
+        </ul>        
+        <br><h1 class="text-3xl font-bold mb-4">Virtual Rock Laboratory</h1>
         <ul id="file-list"></ul>
         <button id="previous-columns-button">Previous</button>
         <button id="next-columns-button">Next</button>
