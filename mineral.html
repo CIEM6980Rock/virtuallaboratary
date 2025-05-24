@@ -378,7 +378,7 @@
                                 });
                                 
                                 // 过滤大文件（移动端不显示大于20MB的文件）
-                                const filteredFiles = files.filter(file => parseFloat(file.sizeInMB) <= 600);
+                                const filteredFiles = files.filter(file => parseFloat(file.sizeInMB) <= 20);
                                 
                                 if (filteredFiles.length > 0) {
                                     fileList.innerHTML = '';
@@ -566,8 +566,12 @@
                             viewerContainer.appendChild(this.renderer.domElement);
                             
                             // 添加环境光和方向光以获得更好的渲染效果
-                            const ambientLight = new THREE.AmbientLight(0xffffff);
+                            const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
                             this.scene.add(ambientLight);
+                            
+                            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+                            directionalLight.position.set(1, 1, 1);
+                            this.scene.add(directionalLight);
                             
                             this.camera.position.z = 5;
                             
