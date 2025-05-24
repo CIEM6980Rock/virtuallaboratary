@@ -9,13 +9,13 @@
     <title>Virtual Laboratory</title>
     <style>
         #viewer-container {
-            width: 1024px;
-            height: 768px;
+            width: 100%;
+            height: 70vh;
             background-color: white;
         }
 
         #progress-bar {
-            display: none; /* 隐藏原有进度条 */
+            display: none;
         }
 
         #loading-container {
@@ -29,6 +29,24 @@
             border: 1px solid #e0e0e0;
             border-radius: 8px;
             box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            width: 80%;
+            max-width: 400px;
+            z-index: 1000;
+        }
+
+        #loading-progress {
+            width: 100%;
+            background-color: #f3f3f3;
+            border-radius: 4px;
+            margin-top: 10px;
+        }
+
+        #loading-bar {
+            width: 0%;
+            height: 20px;
+            background-color: #4CAF50;
+            border-radius: 4px;
+            transition: width 0.3s ease;
         }
 
         #error-message {
@@ -47,7 +65,10 @@
             color: black;
             padding: 10px;
             border-radius: 5px;
+            width: 100%;
+            box-sizing: border-box;
         }
+        
         a {
             display: inline-block;
             background-color: #9efff5;
@@ -55,6 +76,7 @@
             padding: 4px;
             border-radius: 5px;
         }
+        
         #instructions {
             margin-top: 20px;
             margin-bottom: 20px;
@@ -81,8 +103,20 @@
         }
 
         #file-list {
-            column-count: 3;
+            column-count: 1;
             column-gap: 20px;
+        }
+
+        @media (min-width: 768px) {
+            #file-list {
+                column-count: 2;
+            }
+        }
+
+        @media (min-width: 1024px) {
+            #file-list {
+                column-count: 3;
+            }
         }
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -95,7 +129,7 @@
 </head>
 
 <body class="bg-gray-100">
-    <div class="container mx-auto p-8">
+    <div class="container mx-auto p-4 md:p-8">
         <ul>
             <li><a href="index.html">Home Page</a></li>
         </ul>
@@ -105,13 +139,16 @@
         <button id="next-columns-button">Next</button>
         <p id="instructions">
             To view the 3D model:
-            <br> - Zoom in/out: Use the mouse scroll wheel.
-            <br> - Rotate: Click and drag the mouse.
-            <br> - Move: Hold the right - mouse button and drag.
+            <br> - Zoom in/out: Use the mouse scroll wheel or pinch gesture on mobile.
+            <br> - Rotate: Click and drag the mouse or use one finger on mobile.
+            <br> - Move: Hold the right - mouse button and drag or use two fingers on mobile.
         </p>
         <!-- 新增加载提示容器 -->
         <div id="loading-container">
             <div id="loading-status">Loading...</div>
+            <div id="loading-progress">
+                <div id="loading-bar"></div>
+            </div>
         </div>
         <p id="error-message"></p>
         <div id="viewer-container" class="mt-8 border border-gray-300"></div>
@@ -125,11 +162,16 @@
         const errorMessage = document.getElementById('error-message');
         const nextColumnsButton = document.getElementById('next-columns-button');
         const previousColumnsButton = document.getElementById('previous-columns-button');
-        const loadingContainer = document.getElementById('loading-container'); // 新增加载容器引用
+        const loadingContainer = document.getElementById('loading-container');
+        const loadingStatus = document.getElementById('loading-status');
+        const loadingBar = document.getElementById('loading-bar');
 
         const apiKey = 'AIzaSyCuxBB6YRLRSP4lquFvOAn3maFtJQQrVZs';
         const folderId = '1SGH3GtEY-AQ0NtceQI9HW8rdkWANIjqa';
         const driveBaseUrl = 'https://www.googleapis.com/drive/v3/files/';
+        const CHUNK_SIZE = 10 * 1024 * 1024; // 10MB chunks for processing
+        const MAX_RETRIES = 5; // 增加最大重试次数
+        const TIMEOUT_DURATION = 600000; // 增加超时时间到10分钟
 
         let scene, camera, renderer, controls;
         let currentModel;
@@ -142,7 +184,7 @@
 
             camera = new THREE.PerspectiveCamera(75, viewerContainer.clientWidth / viewerContainer.clientHeight, 0.1, 1000);
             renderer = new THREE.WebGLRenderer({alpha: true});
-            renderer.setSize(1024, 768);
+            renderer.setSize(viewerContainer.clientWidth, viewerContainer.clientHeight);
             viewerContainer.appendChild(renderer.domElement);
 
             const Light = new THREE.AmbientLight(0xffffff);
@@ -153,37 +195,52 @@
             controls = new THREE.OrbitControls(camera, renderer.domElement);
             controls.enableDamping = true;
             controls.dampingFactor = 0.05;
+            
+            // 响应窗口大小变化
+            window.addEventListener('resize', onWindowResize);
+        }
+
+        function onWindowResize() {
+            camera.aspect = viewerContainer.clientWidth / viewerContainer.clientHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(viewerContainer.clientWidth, viewerContainer.clientHeight);
         }
 
         function loadOBJ(data) {
-            loadingContainer.style.display = 'none'; // 加载完成后隐藏加载提示
+            loadingContainer.style.display = 'none';
             errorMessage.textContent = '';
             if (currentModel) {
                 scene.remove(currentModel);
             }
-            const loader = new THREE.OBJLoader();
-            const object = loader.parse(data);
-            currentModel = object;
+            
+            try {
+                const loader = new THREE.OBJLoader();
+                const object = loader.parse(data);
+                currentModel = object;
 
-            // Calculate the bounding box of the object
-            const box = new THREE.Box3().setFromObject(object);
-            const center = box.getCenter(new THREE.Vector3());
-            const size = box.getSize(new THREE.Vector3());
+                // Calculate the bounding box of the object
+                const box = new THREE.Box3().setFromObject(object);
+                const center = box.getCenter(new THREE.Vector3());
+                const size = box.getSize(new THREE.Vector3());
 
-            // Center the object
-            object.position.sub(center);
+                // Center the object
+                object.position.sub(center);
 
-            // Fit the object in the window
-            const maxSize = Math.max(size.x, size.y, size.z);
-            const fitHeightDistance = maxSize / (2 * Math.atan((Math.PI * camera.fov) / 360));
-            const fitWidthDistance = fitHeightDistance / camera.aspect;
-            const distance = Math.max(fitHeightDistance, fitWidthDistance);
+                // Fit the object in the window
+                const maxSize = Math.max(size.x, size.y, size.z);
+                const fitHeightDistance = maxSize / (2 * Math.atan((Math.PI * camera.fov) / 360));
+                const fitWidthDistance = fitHeightDistance / camera.aspect;
+                const distance = Math.max(fitHeightDistance, fitWidthDistance);
 
-            camera.position.z = distance;
-            camera.lookAt(new THREE.Vector3());
+                camera.position.z = distance;
+                camera.lookAt(new THREE.Vector3());
 
-            scene.add(object);
-            animate();
+                scene.add(object);
+                animate();
+            } catch (error) {
+                errorMessage.textContent = `Error parsing model: ${error.message}`;
+                console.error('Model parsing error:', error);
+            }
         }
 
         function clearModel() {
@@ -213,6 +270,7 @@
                 loadFolder();
             }).catch((error) => {
                 console.error('Error initializing Google API client:', error);
+                errorMessage.textContent = 'Failed to initialize Google API client. Please try again later.';
             });
         }
 
@@ -221,10 +279,16 @@
             try {
                 const response = await gapi.client.drive.files.list({
                     q: `'${folderId}' in parents and (mimeType contains 'application' or mimeType contains 'text')`,
-                    fields: 'files(id, name, mimeType)'
+                    fields: 'files(id, name, mimeType, size)'
                 });
                 console.log('Full API response for files.list:', response);
                 const files = response.result.files.filter(file => file.name.endsWith('.obj'));
+                
+                // 为文件添加大小信息
+                files.forEach(file => {
+                    file.sizeInMB = (file.size / (1024 * 1024)).toFixed(2);
+                });
+                
                 if (files.length > 0) {
                     fileList.innerHTML = '';
                     const totalItemsToShow = columnsToShow * itemsPerColumn;
@@ -232,44 +296,11 @@
                     displayFiles.forEach((file) => {
                         const listItem = document.createElement('li');
                         const linkElement = document.createElement('a');
-                        linkElement.textContent = file.name;
+                        linkElement.textContent = `${file.name} (${file.sizeInMB} MB)`;
                         linkElement.href = '#';
                         linkElement.addEventListener('click', async function (e) {
                             e.preventDefault();
-                            loadingContainer.style.display = 'block'; // 点击时显示加载提示
-                            loadingContainer.querySelector('#loading-status').textContent = 'Loading...'; // 显示加载中
-                            try {
-                                // 使用fetch获取文件内容，处理大文件和gzip压缩
-                                const fileUrl = `${driveBaseUrl}${file.id}?alt=media&key=${apiKey}`;
-                                const response = await fetch(fileUrl, {
-                                    headers: {
-                                        'Accept-Encoding': 'gzip, deflate'
-                                    }
-                                });
-
-                                let fileContent;
-                                if (response.headers.get('content-encoding') === 'gzip') {
-                                    const reader = new ResponseReader(response);
-                                    fileContent = await reader.text();
-                                } else {
-                                    fileContent = await response.text();
-                                }
-
-                                if (!fileContent.trim()) {
-                                    throw new Error('File content is empty');
-                                }
-
-                                loadOBJ(fileContent);
-                                loadingContainer.querySelector('#loading-status').textContent = 'Loading Complete'; // 加载完成后显示完成
-                                // 3秒后自动隐藏加载提示（可根据需求调整）
-                                setTimeout(() => {
-                                    loadingContainer.style.display = 'none';
-                                }, 3000);
-                            } catch (error) {
-                                loadingContainer.style.display = 'none'; // 出错时隐藏加载提示
-                                errorMessage.textContent = `Error loading file: ${error.message}`;
-                                console.error('File loading error:', error);
-                            }
+                            loadFile(file);
                         });
                         listItem.appendChild(linkElement);
                         fileList.appendChild(listItem);
@@ -291,31 +322,264 @@
                     errorMessage.textContent = 'No files found in the folder.';
                 }
             } catch (error) {
-                loadingContainer.style.display = 'none'; // 出错时隐藏加载提示
+                loadingContainer.style.display = 'none';
                 errorMessage.textContent = `Error fetching folder contents: ${error.message}`;
                 console.error('Folder loading error:', error);
             }
         }
 
-        class ResponseReader {
-            constructor(response) {
-                this.response = response;
-            }
+        // 存储已下载的文件块
+        let downloadedChunks = [];
+        let totalBytesDownloaded = 0;
 
-            async text() {
-                const reader = this.response.body.getReader();
-                const decoder = new TextDecoder('utf-8');
-                let result = [];
-                let done = false;
-
-                while (!done) {
-                    const { value, done: doneReading } = await reader.read();
-                    done = doneReading;
-                    result.push(decoder.decode(value, { stream: !done }));
+        async function loadFile(file) {
+            clearModel();
+            loadingContainer.style.display = 'block';
+            loadingStatus.textContent = 'Preparing to load...';
+            loadingBar.style.width = '0%';
+            errorMessage.textContent = '';
+            
+            // 重置下载状态
+            downloadedChunks = [];
+            totalBytesDownloaded = 0;
+            
+            let retries = 0;
+            let fileContent = '';
+            let estimatedSize = parseInt(file.size, 10) || 100 * 1024 * 1024; // 默认估计100MB
+            
+            while (retries < MAX_RETRIES) {
+                // 每次重试时重置进度条
+                loadingBar.style.width = '0%';
+                loadingStatus.textContent = `Attempt ${retries + 1}/${MAX_RETRIES}...`;
+                
+                let startTime = Date.now();
+                let lastUpdateTime = startTime;
+                let loadedSize = totalBytesDownloaded;
+                let progressInterval;
+                
+                try {
+                    // 使用fetch获取文件内容，处理大文件和gzip压缩
+                    const fileUrl = `${driveBaseUrl}${file.id}?alt=media&key=${apiKey}`;
+                    
+                    // 创建带超时的fetch请求
+                    const controller = new AbortController();
+                    const signal = controller.signal;
+                    
+                    const timeoutId = setTimeout(() => {
+                        controller.abort(); // 超时后中止请求
+                    }, TIMEOUT_DURATION);
+                    
+                    // 显示开始下载的状态
+                    loadingStatus.textContent = 'Starting download...';
+                    
+                    // 设置Range头实现断点续传
+                    const headers = {
+                        'Accept-Encoding': 'gzip, deflate'
+                    };
+                    
+                    if (totalBytesDownloaded > 0) {
+                        headers['Range'] = `bytes=${totalBytesDownloaded}-`;
+                        loadingStatus.textContent = `Resuming download from ${(totalBytesDownloaded / (1024 * 1024)).toFixed(2)} MB...`;
+                    }
+                    
+                    const response = await fetch(fileUrl, {
+                        signal,
+                        headers
+                    });
+                    
+                    clearTimeout(timeoutId); // 清除超时计时器
+                    
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    
+                    // 尝试获取实际内容长度
+                    const contentLengthHeader = response.headers.get('content-length');
+                    const contentRangeHeader = response.headers.get('content-range');
+                    
+                    let contentLength;
+                    if (contentRangeHeader) {
+                        // 解析Content-Range头获取完整文件大小
+                        const match = contentRangeHeader.match(/\/(\d+)$/);
+                        if (match) {
+                            estimatedSize = parseInt(match[1], 10);
+                        }
+                    }
+                    
+                    if (contentLengthHeader) {
+                        contentLength = parseInt(contentLengthHeader, 10);
+                        // 如果是断点续传，更新已下载大小
+                        if (totalBytesDownloaded > 0) {
+                            estimatedSize = totalBytesDownloaded + contentLength;
+                        } else {
+                            estimatedSize = contentLength;
+                        }
+                    }
+                    
+                    // 处理流式响应
+                    const reader = response.body.getReader();
+                    const decoder = new TextDecoder('utf-8');
+                    let chunks = [];
+                    let done = false;
+                    
+                    // 启动进度更新定时器
+                    progressInterval = setInterval(() => {
+                        const elapsed = (Date.now() - startTime) / 1000;
+                        const speed = loadedSize / elapsed / 1024; // KB/s
+                        const estimatedRemaining = estimatedSize 
+                            ? (estimatedSize - loadedSize) / speed / 1000 
+                            : Math.max(10 - elapsed, 0);
+                        
+                        const progressPercent = estimatedSize 
+                            ? Math.min((loadedSize / estimatedSize) * 100, 100) 
+                            : Math.min((elapsed / (elapsed + estimatedRemaining)) * 100, 95);
+                        
+                        loadingBar.style.width = `${progressPercent}%`;
+                        
+                        if (estimatedSize) {
+                            const loadedMB = (loadedSize / (1024 * 1024)).toFixed(2);
+                            const totalMB = (estimatedSize / (1024 * 1024)).toFixed(2);
+                            loadingStatus.textContent = `Downloading: ${loadedMB}/${totalMB} MB (${Math.round(progressPercent)}%) at ${speed.toFixed(2)} KB/s`;
+                        } else {
+                            const loadedMB = (loadedSize / (1024 * 1024)).toFixed(2);
+                            loadingStatus.textContent = `Downloading: ${loadedMB} MB (${Math.round(progressPercent)}%) at ${speed.toFixed(2)} KB/s`;
+                        }
+                    }, 1000);
+                    
+                    loadingStatus.textContent = 'Downloading...';
+                    
+                    while (!done) {
+                        const { value, done: doneReading } = await reader.read();
+                        done = doneReading;
+                        
+                        if (value) {
+                            // 分块处理，避免内存溢出
+                            loadedSize += value.byteLength;
+                            totalBytesDownloaded += value.byteLength;
+                            
+                            // 每5秒更新一次进度
+                            const now = Date.now();
+                            if (now - lastUpdateTime > 5000) {
+                                lastUpdateTime = now;
+                            }
+                            
+                            // 保存当前块
+                            chunks.push(value);
+                            
+                            // 每下载100MB合并一次块并释放内存
+                            if (chunks.reduce((sum, chunk) => sum + chunk.byteLength, 0) > 100 * 1024 * 1024) {
+                                const mergedChunk = mergeChunks(chunks);
+                                downloadedChunks.push(mergedChunk);
+                                chunks = [];
+                            }
+                        }
+                    }
+                    
+                    // 合并剩余的块
+                    if (chunks.length > 0) {
+                        const mergedChunk = mergeChunks(chunks);
+                        downloadedChunks.push(mergedChunk);
+                    }
+                    
+                    // 清除进度更新定时器
+                    clearInterval(progressInterval);
+                    
+                    // 检查是否下载完成
+                    if (!estimatedSize || totalBytesDownloaded >= estimatedSize) {
+                        // 确保进度条显示100%
+                        loadingBar.style.width = '100%';
+                        loadingStatus.textContent = 'Download complete. Processing...';
+                        
+                        // 合并所有块并解码为文本
+                        const completeBuffer = mergeChunks(downloadedChunks);
+                        fileContent = decoder.decode(completeBuffer);
+                        
+                        if (!fileContent.trim()) {
+                            throw new Error('File content is empty');
+                        }
+                        
+                        // 成功获取文件内容，跳出重试循环
+                        break;
+                    } else {
+                        // 未完成，继续下载
+                        loadingStatus.textContent = `Download paused at ${(totalBytesDownloaded / (1024 * 1024)).toFixed(2)} MB. Resuming...`;
+                    }
+                } catch (error) {
+                    // 清除进度更新定时器
+                    clearInterval(progressInterval);
+                    
+                    retries++;
+                    if (retries >= MAX_RETRIES) {
+                        loadingContainer.style.display = 'none';
+                        errorMessage.textContent = `Failed to load file after ${MAX_RETRIES} attempts: ${error.message}`;
+                        console.error('File loading error:', error);
+                        return;
+                    } else {
+                        loadingStatus.textContent = `Retry ${retries}/${MAX_RETRIES} in 5 seconds...`;
+                        await new Promise(resolve => setTimeout(resolve, 5000));
+                    }
                 }
-
-                return result.join('');
             }
+            
+            try {
+                // 显示解析进度
+                loadingStatus.textContent = 'Parsing model...';
+                loadingBar.style.width = '0%';
+                
+                // 分块解析大文件以避免阻塞UI线程
+                const parseModel = () => {
+                    return new Promise(resolve => {
+                        // 安排在下一帧执行，避免长时间阻塞UI
+                        requestAnimationFrame(() => {
+                            loadOBJ(fileContent);
+                            resolve();
+                        });
+                    });
+                };
+                
+                await parseModel();
+                
+                loadingStatus.textContent = 'Loading Complete';
+                loadingBar.style.width = '100%';
+                
+                // 重置下载状态
+                downloadedChunks = [];
+                totalBytesDownloaded = 0;
+                
+                // 3秒后自动隐藏加载提示
+                setTimeout(() => {
+                    loadingContainer.style.display = 'none';
+                }, 3000);
+            } catch (error) {
+                // 重置下载状态
+                downloadedChunks = [];
+                totalBytesDownloaded = 0;
+                
+                loadingContainer.style.display = 'none';
+                errorMessage.textContent = `Error processing file: ${error.message}`;
+                console.error('File processing error:', error);
+            }
+        }
+        
+        // 合并多个ArrayBuffer
+        function mergeChunks(chunks) {
+            if (chunks.length === 0) return new Uint8Array(0);
+            if (chunks.length === 1) return chunks[0];
+            
+            // 计算总大小
+            const totalLength = chunks.reduce((sum, chunk) => sum + chunk.byteLength, 0);
+            
+            // 创建新的ArrayBuffer
+            const result = new Uint8Array(totalLength);
+            let offset = 0;
+            
+            // 复制所有块
+            chunks.forEach(chunk => {
+                result.set(new Uint8Array(chunk), offset);
+                offset += chunk.byteLength;
+            });
+            
+            return result.buffer;
         }
 
         nextColumnsButton.addEventListener('click', function () {
@@ -328,10 +592,18 @@
             loadFolder();
         });
 
+        // 窗口大小变化时调整渲染器
+        window.addEventListener('resize', function() {
+            if (renderer) {
+                renderer.setSize(viewerContainer.clientWidth, viewerContainer.clientHeight);
+                camera.aspect = viewerContainer.clientWidth / viewerContainer.clientHeight;
+                camera.updateProjectionMatrix();
+            }
+        });
+
         init();
         handleClientLoad();
     </script>
 </body>
 
 </html>
-    
