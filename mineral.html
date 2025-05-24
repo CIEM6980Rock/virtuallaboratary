@@ -378,7 +378,7 @@
                                 });
                                 
                                 // 过滤大文件（移动端不显示大于20MB的文件）
-                                const filteredFiles = files.filter(file => parseFloat(file.sizeInMB) <= 20);
+                                const filteredFiles = files.filter(file => parseFloat(file.sizeInMB) <= 700);
                                 
                                 if (filteredFiles.length > 0) {
                                     fileList.innerHTML = '';
