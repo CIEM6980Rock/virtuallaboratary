@@ -1,12 +1,11 @@
 <!DOCTYPE html>
-<html lang="en">
-
+<html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Virtual Rock Laboratory</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css" rel="stylesheet">
-    <title>Virtual Laboratory</title>
     <style>
         #viewer-container {
             width: 100%;
@@ -39,7 +38,7 @@
             background-color: #f3f3f3;
             border-radius: 4px;
             margin-top: 10px;
-            overflow: hidden; /* 确保进度条不超出容器 */
+            overflow: hidden;
         }
 
         #loading-bar {
@@ -73,8 +72,8 @@
         #file-list {
             display: flex;
             flex-wrap: wrap;
-            gap: 10px; /* 项目间距 */
-            justify-content: flex-start; /* 左对齐 */
+            gap: 10px;
+            justify-content: flex-start;
             margin: 0;
             padding: 0;
         }
@@ -83,8 +82,8 @@
             list-style: none;
             margin: 0;
             padding: 0;
-            flex: 0 0 auto; /* 不扩展，根据内容确定宽度 */
-            min-width: 150px; /* 设置最小宽度 */
+            flex: 0 0 auto;
+            min-width: 150px;
         }
 
         #file-list li a {
@@ -94,9 +93,9 @@
             padding: 10px 15px;
             border-radius: 5px;
             text-decoration: none;
-            white-space: nowrap; /* 防止文本换行 */
+            white-space: nowrap;
             overflow: hidden;
-            text-overflow: ellipsis; /* 长文本显示省略号 */
+            text-overflow: ellipsis;
             transition: all 0.3s ease;
         }
 
@@ -165,9 +164,9 @@
         <button id="next-columns-button">Next</button>
         <p id="instructions">
             To view the 3D model:
-            <br> - Zoom in/out: Use the mouse scroll wheel or pinch gesture on mobile.
-            <br> - Rotate: Click and drag the mouse or use one finger on mobile.
-            <br> - Move: Hold the right - mouse button and drag or use two fingers on mobile.
+            <br> - Zoom in/out: Use the mouse scroll wheel.
+            <br> - Rotate: Click and drag the mouse.
+            <br> - Move: Hold the right - mouse button and drag.
         </p>
         <!-- 新增加载提示容器 -->
         <div id="loading-container">
@@ -185,40 +184,24 @@
     <script>
         // Google Drive文件夹ID常量
         const GOOGLE_DRIVE_FOLDER_ID = '1SGH3GtEY-AQ0NtceQI9HW8rdkWANIjqa';
-        
-        // 检测设备类型
-        function isMobileDevice() {
-            return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-        }
 
-        // 根据设备类型加载不同资源
         document.addEventListener('DOMContentLoaded', function() {
             // 加载Three.js库
             const threeJsScript = document.createElement('script');
-            if (isMobileDevice()) {
-                // 移动端使用轻量级库
-                threeJsScript.src = 'https://cdn.jsdelivr.net/npm/three@0.132.2/build/three.min.js';
-            } else {
-                // 桌面端使用完整库
-                threeJsScript.src = 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js';
-            }
+            threeJsScript.src = 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js';
             document.head.appendChild(threeJsScript);
 
             // 等待Three.js加载完成后继续
             threeJsScript.onload = function() {
                 // 加载GLTFLoader
                 const gltfLoaderScript = document.createElement('script');
-                if (isMobileDevice()) {
-                    gltfLoaderScript.src = 'https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/loaders/GLTFLoader.min.js';
-                } else {
-                    gltfLoaderScript.src = 'https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/loaders/GLTFLoader.js';
-                    
-                    // 桌面端还需要轨道控制器
-                    const orbitControlsScript = document.createElement('script');
-                    orbitControlsScript.src = 'https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/controls/OrbitControls.js';
-                    document.head.appendChild(orbitControlsScript);
-                }
+                gltfLoaderScript.src = 'https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/loaders/GLTFLoader.js';
                 document.head.appendChild(gltfLoaderScript);
+
+                // 加载轨道控制器
+                const orbitControlsScript = document.createElement('script');
+                orbitControlsScript.src = 'https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/controls/OrbitControls.js';
+                document.head.appendChild(orbitControlsScript);
 
                 // 等待GLTFLoader加载完成后初始化查看器
                 gltfLoaderScript.onload = function() {
@@ -233,11 +216,7 @@
                             discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/drive/v3/rest']
                         }).then(() => {
                             console.log('Google API client initialized');
-                            if (isMobileDevice()) {
-                                MobileViewer.loadFolder();
-                            } else {
-                                DesktopViewer.loadFolder();
-                            }
+                            Viewer.loadFolder();
                         }).catch((error) => {
                             const errorMessage = document.getElementById('error-message');
                             console.error('Error initializing Google API client:', error);
@@ -245,314 +224,15 @@
                         });
                     }
 
-                    // 移动端查看器
-                    const MobileViewer = {
+                    // 查看器
+                    const Viewer = {
                         scene: null,
                         camera: null,
                         renderer: null,
                         controls: null,
                         currentModel: null,
                         currentOffset: 0,
-                        itemsPerColumn: 10, // 增加每行显示数量
-                        columnsToShow: 1,
-                        
-                        init() {
-                            const viewerContainer = document.getElementById('viewer-container');
-                            
-                            this.scene = new THREE.Scene();
-                            
-                            this.camera = new THREE.PerspectiveCamera(75, viewerContainer.clientWidth / viewerContainer.clientHeight, 0.1, 1000);
-                            this.renderer = new THREE.WebGLRenderer({alpha: true, antialias: false}); // 禁用抗锯齿以提高性能
-                            this.renderer.setSize(viewerContainer.clientWidth, viewerContainer.clientHeight);
-                            viewerContainer.appendChild(this.renderer.domElement);
-                            
-                            // 添加环境光和方向光以获得更好的渲染效果
-                            const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
-                            this.scene.add(ambientLight);
-                            
-                            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-                            directionalLight.position.set(1, 1, 1);
-                            this.scene.add(directionalLight);
-                            
-                            this.camera.position.z = 5;
-                            
-                            // 检查轨道控制器是否已加载
-                            if (typeof THREE.OrbitControls !== 'undefined') {
-                                this.controls = new THREE.OrbitControls(this.camera, this.renderer.domElement);
-                                this.controls.enableDamping = true;
-                                this.controls.dampingFactor = 0.05;
-                                
-                                // 限制最大缩放，防止移动设备性能问题
-                                this.controls.maxDistance = 20;
-                                this.controls.minDistance = 2;
-                            }
-                            
-                            // 响应窗口大小变化
-                            window.addEventListener('resize', this.onWindowResize.bind(this));
-                        },
-                        
-                        onWindowResize() {
-                            const viewerContainer = document.getElementById('viewer-container');
-                            this.camera.aspect = viewerContainer.clientWidth / viewerContainer.clientHeight;
-                            this.camera.updateProjectionMatrix();
-                            this.renderer.setSize(viewerContainer.clientWidth, viewerContainer.clientHeight);
-                        },
-                        
-                        loadGLB(gltf) {
-                            const loadingContainer = document.getElementById('loading-container');
-                            const errorMessage = document.getElementById('error-message');
-                            
-                            loadingContainer.style.display = 'none';
-                            errorMessage.textContent = '';
-                            if (this.currentModel) {
-                                this.scene.remove(this.currentModel);
-                            }
-                            
-                            try {
-                                this.currentModel = gltf.scene;
-                                
-                                // Calculate the bounding box of the object
-                                const box = new THREE.Box3().setFromObject(this.currentModel);
-                                const center = box.getCenter(new THREE.Vector3());
-                                const size = box.getSize(new THREE.Vector3());
-                                
-                                // Center the object
-                                this.currentModel.position.sub(center);
-                                
-                                // Fit the object in the window
-                                const maxSize = Math.max(size.x, size.y, size.z);
-                                const fitHeightDistance = maxSize / (2 * Math.atan((Math.PI * this.camera.fov) / 360));
-                                const fitWidthDistance = fitHeightDistance / this.camera.aspect;
-                                const distance = Math.max(fitHeightDistance, fitWidthDistance);
-                                
-                                this.camera.position.z = distance;
-                                this.camera.lookAt(new THREE.Vector3());
-                                
-                                this.scene.add(this.currentModel);
-                                this.animate();
-                            } catch (error) {
-                                errorMessage.textContent = `Error processing model: ${error.message}`;
-                                console.error('Model processing error:', error);
-                            }
-                        },
-                        
-                        clearModel() {
-                            if (this.currentModel) {
-                                this.scene.remove(this.currentModel);
-                                this.currentModel = null;
-                                this.renderer.render(this.scene, this.camera);
-                            }
-                        },
-                        
-                        animate() {
-                            requestAnimationFrame(this.animate.bind(this));
-                            if (this.controls) this.controls.update();
-                            this.renderer.render(this.scene, this.camera);
-                        },
-                        
-                        async loadFolder() {
-                            const errorMessage = document.getElementById('error-message');
-                            const fileList = document.getElementById('file-list');
-                            const nextColumnsButton = document.getElementById('next-columns-button');
-                            const previousColumnsButton = document.getElementById('previous-columns-button');
-                            
-                            errorMessage.textContent = '';
-                            try {
-                                // 修改查询条件，只查找GLB文件
-                                const response = await gapi.client.drive.files.list({
-                                    q: `'${GOOGLE_DRIVE_FOLDER_ID}' in parents and name contains '.glb'`,
-                                    fields: 'files(id, name, mimeType, size)',
-                                    orderBy: 'name'
-                                });
-                                console.log('Full API response for files.list:', response);
-                                
-                                if (!response.result || !response.result.files) {
-                                    throw new Error('No files returned from Google Drive API');
-                                }
-                                
-                                const files = response.result.files;
-                                
-                                // 为文件添加大小信息
-                                files.forEach(file => {
-                                    file.sizeInMB = (file.size / (1024 * 1024)).toFixed(2);
-                                });
-                                
-                                // 过滤大文件（移动端不显示大于20MB的文件）
-                                const filteredFiles = files.filter(file => parseFloat(file.sizeInMB) <= 700);
-                                
-                                if (filteredFiles.length > 0) {
-                                    fileList.innerHTML = '';
-                                    const totalItemsToShow = this.columnsToShow * this.itemsPerColumn;
-                                    const displayFiles = filteredFiles.slice(this.currentOffset, this.currentOffset + totalItemsToShow);
-                                    displayFiles.forEach((file) => {
-                                        const listItem = document.createElement('li');
-                                        const linkElement = document.createElement('a');
-                                        linkElement.textContent = `${file.name} (${file.sizeInMB} MB)`;
-                                        linkElement.href = '#';
-                                        linkElement.addEventListener('click', async function (e) {
-                                            e.preventDefault();
-                                            await MobileViewer.loadFile(file);
-                                        });
-                                        listItem.appendChild(linkElement);
-                                        fileList.appendChild(listItem);
-                                    });
-                                    if (filteredFiles.length > this.currentOffset + totalItemsToShow) {
-                                        nextColumnsButton.style.display = 'block';
-                                    } else {
-                                        nextColumnsButton.style.display = 'none';
-                                    }
-                                    if (this.currentOffset > 0) {
-                                        previousColumnsButton.style.display = 'block';
-                                    } else {
-                                        previousColumnsButton.style.display = 'none';
-                                    }
-                                    if (fileList.children.length === 0) {
-                                        errorMessage.textContent = 'No small GLB files found in the folder.';
-                                    }
-                                } else {
-                                    errorMessage.textContent = 'No files found in the folder or all files are too large for mobile devices.';
-                                }
-                            } catch (error) {
-                                const loadingContainer = document.getElementById('loading-container');
-                                loadingContainer.style.display = 'none';
-                                errorMessage.textContent = `Error fetching folder contents: ${error.message}`;
-                                console.error('Folder loading error:', error);
-                            }
-                        },
-                        
-                        async loadFile(file) {
-                            const loadingContainer = document.getElementById('loading-container');
-                            const loadingStatus = document.getElementById('loading-status');
-                            const loadingBar = document.getElementById('loading-bar');
-                            const loadingPercentage = document.getElementById('loading-percentage');
-                            const errorMessage = document.getElementById('error-message');
-                            
-                            this.clearModel();
-                            loadingContainer.style.display = 'block';
-                            loadingStatus.textContent = 'Preparing to load...';
-                            loadingBar.style.width = '0%';
-                            loadingPercentage.textContent = '0%';
-                            errorMessage.textContent = '';
-                            
-                            const MAX_RETRIES = 3; // 减少重试次数
-                            const TIMEOUT_DURATION = 300000; // 超时时间5分钟
-                            const driveBaseUrl = 'https://www.googleapis.com/drive/v3/files/';
-                            const apiKey = 'AIzaSyCuxBB6YRLRSP4lquFvOAn3maFtJQQrVZs';
-                            
-                            // 尝试从Google Drive API获取的文件信息中获取文件大小
-                            const fileSizeFromApi = file.size ? parseInt(file.size, 10) : null;
-                            
-                            let retries = 0;
-                            
-                            while (retries < MAX_RETRIES) {
-                                try {
-                                    // 使用fetch获取文件内容
-                                    const fileUrl = `${driveBaseUrl}${file.id}?alt=media&key=${apiKey}`;
-                                    
-                                    // 创建带超时的fetch请求
-                                    const controller = new AbortController();
-                                    const signal = controller.signal;
-                                    
-                                    const timeoutId = setTimeout(() => {
-                                        controller.abort(); // 超时后中止请求
-                                    }, TIMEOUT_DURATION);
-                                    
-                                    // 显示开始下载的状态
-                                    loadingStatus.textContent = 'Starting download...';
-                                    
-                                    const response = await fetch(fileUrl, { signal });
-                                    
-                                    clearTimeout(timeoutId); // 清除超时计时器
-                                    
-                                    if (!response.ok) {
-                                        throw new Error(`HTTP error! status: ${response.status}`);
-                                    }
-                                    
-                                    // 尝试获取实际内容长度
-                                    const contentLength = response.headers.get('content-length');
-                                    const fileSizeFromResponse = contentLength ? parseInt(contentLength, 10) : null;
-                                    
-                                    // 优先使用Google Drive API返回的文件大小，其次使用响应头中的大小
-                                    const fileSize = fileSizeFromApi || fileSizeFromResponse;
-                                    
-                                    // 确保文件大小正确显示
-                                    const formattedFileSize = fileSize 
-                                        ? `${(fileSize / (1024 * 1024)).toFixed(2)} MB` 
-                                        : '? MB';
-                                    
-                                    // 创建加载器实例
-                                    const loader = new THREE.GLTFLoader();
-                                    
-                                    // 设置加载进度回调
-                                    loader.load(
-                                        fileUrl,
-                                        (gltf) => {
-                                            // 成功加载
-                                            this.loadGLB(gltf);
-                                            loadingStatus.textContent = 'Loading Complete';
-                                            loadingBar.style.width = '100%';
-                                            loadingPercentage.textContent = '100%';
-                                            
-                                            // 3秒后自动隐藏加载提示
-                                            setTimeout(() => {
-                                                loadingContainer.style.display = 'none';
-                                            }, 3000);
-                                        },
-                                        (progress) => {
-                                            // 计算已加载大小和百分比
-                                            const loadedMB = (progress.loaded / (1024 * 1024)).toFixed(2);
-                                            
-                                            // 优先使用Google Drive API的文件大小，其次使用progress.total
-                                            const totalSize = fileSize || progress.total;
-                                            
-                                            // 计算百分比，确保不超过100%
-                                            const percent = totalSize 
-                                                ? Math.min(100, Math.round((progress.loaded / totalSize) * 100)) 
-                                                : Math.round((progress.loaded / (progress.total || 1)) * 100);
-                                            
-                                            // 更新进度条和百分比显示
-                                            loadingBar.style.width = `${percent}%`;
-                                            loadingPercentage.textContent = `${percent}%`;
-                                            
-                                            // 更新加载状态文本，显示(已加载大小)/(总文件大小) (百分比%)格式
-                                            const sizeInfo = totalSize 
-                                                ? `${loadedMB} MB / ${(totalSize / (1024 * 1024)).toFixed(2)} MB` 
-                                                : `${loadedMB} MB / ? MB`;
-                                            
-                                            loadingStatus.textContent = `Downloading: ${sizeInfo} (${percent}%)`;
-                                        },
-                                        (error) => {
-                                            throw new Error(`Failed to load model: ${error.message}`);
-                                        }
-                                    );
-                                    
-                                    // 成功开始加载，跳出重试循环
-                                    break;
-                                } catch (error) {
-                                    retries++;
-                                    if (retries >= MAX_RETRIES) {
-                                        loadingContainer.style.display = 'none';
-                                        errorMessage.textContent = `Failed to load file after ${MAX_RETRIES} attempts: ${error.message}`;
-                                        console.error('File loading error:', error);
-                                        return;
-                                    } else {
-                                        loadingStatus.textContent = `Retry ${retries}/${MAX_RETRIES} in 5 seconds...`;
-                                        await new Promise(resolve => setTimeout(resolve, 5000));
-                                    }
-                                }
-                            }
-                        }
-                    };
-
-                    // 桌面端查看器
-                    const DesktopViewer = {
-                        scene: null,
-                        camera: null,
-                        renderer: null,
-                        controls: null,
-                        currentModel: null,
-                        currentOffset: 0,
-                        itemsPerColumn: 10, // 增加每行显示数量
+                        itemsPerColumn: 10,
                         columnsToShow: 2,
                         
                         init() {
@@ -683,7 +363,7 @@
                                         linkElement.href = '#';
                                         linkElement.addEventListener('click', async function (e) {
                                             e.preventDefault();
-                                            await DesktopViewer.loadFile(file);
+                                            await Viewer.loadFile(file);
                                         });
                                         listItem.appendChild(linkElement);
                                         fileList.appendChild(listItem);
@@ -726,8 +406,8 @@
                             loadingPercentage.textContent = '0%';
                             errorMessage.textContent = '';
                             
-                            const MAX_RETRIES = 5; // 增加最大重试次数
-                            const TIMEOUT_DURATION = 600000; // 增加超时时间到10分钟
+                            const MAX_RETRIES = 5;
+                            const TIMEOUT_DURATION = 600000;
                             const driveBaseUrl = 'https://www.googleapis.com/drive/v3/files/';
                             const apiKey = 'AIzaSyCuxBB6YRLRSP4lquFvOAn3maFtJQQrVZs';
                             
@@ -837,34 +517,20 @@
                     };
 
                     // 初始化查看器
-                    if (isMobileDevice()) {
-                        MobileViewer.init();
-                    } else {
-                        DesktopViewer.init();
-                    }
+                    Viewer.init();
 
                     // 添加按钮事件监听
                     const nextColumnsButton = document.getElementById('next-columns-button');
                     const previousColumnsButton = document.getElementById('previous-columns-button');
                     
                     nextColumnsButton.addEventListener('click', function () {
-                        if (isMobileDevice()) {
-                            MobileViewer.currentOffset += MobileViewer.columnsToShow * MobileViewer.itemsPerColumn;
-                            MobileViewer.loadFolder();
-                        } else {
-                            DesktopViewer.currentOffset += DesktopViewer.columnsToShow * DesktopViewer.itemsPerColumn;
-                            DesktopViewer.loadFolder();
-                        }
+                        Viewer.currentOffset += Viewer.columnsToShow * Viewer.itemsPerColumn;
+                        Viewer.loadFolder();
                     });
                     
                     previousColumnsButton.addEventListener('click', function () {
-                        if (isMobileDevice()) {
-                            MobileViewer.currentOffset -= MobileViewer.columnsToShow * MobileViewer.itemsPerColumn;
-                            MobileViewer.loadFolder();
-                        } else {
-                            DesktopViewer.currentOffset -= DesktopViewer.columnsToShow * DesktopViewer.itemsPerColumn;
-                            DesktopViewer.loadFolder();
-                        }
+                        Viewer.currentOffset -= Viewer.columnsToShow * Viewer.itemsPerColumn;
+                        Viewer.loadFolder();
                     });
 
                     // 加载Google API
@@ -882,4 +548,5 @@
     </script>
 </body>
 
-</html>    
+</html>
+    
