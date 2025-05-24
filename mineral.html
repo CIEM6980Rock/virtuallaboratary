@@ -39,6 +39,7 @@
             background-color: #f3f3f3;
             border-radius: 4px;
             margin-top: 10px;
+            overflow: hidden; /* 确保进度条不超出容器 */
         }
 
         #loading-bar {
@@ -47,6 +48,20 @@
             background-color: #4CAF50;
             border-radius: 4px;
             transition: width 0.3s ease;
+            position: relative;
+        }
+
+        #loading-percentage {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            text-align: center;
+            line-height: 20px;
+            color: white;
+            font-weight: bold;
+            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
         }
 
         #error-message {
@@ -54,19 +69,41 @@
             margin-top: 10px;
         }
 
+        /* 文件列表样式 */
+        #file-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px; /* 项目间距 */
+            justify-content: flex-start; /* 左对齐 */
+            margin: 0;
+            padding: 0;
+        }
+
         #file-list li {
-            list-style-type: none;
-            margin-bottom: 10px;
+            list-style: none;
+            margin: 0;
+            padding: 0;
+            flex: 0 0 auto; /* 不扩展，根据内容确定宽度 */
+            min-width: 150px; /* 设置最小宽度 */
         }
 
         #file-list li a {
-            display: inline-block;
+            display: block;
             background-color: #D9C79B;
             color: black;
-            padding: 10px;
+            padding: 10px 15px;
             border-radius: 5px;
-            width: 100%;
-            box-sizing: border-box;
+            text-decoration: none;
+            white-space: nowrap; /* 防止文本换行 */
+            overflow: hidden;
+            text-overflow: ellipsis; /* 长文本显示省略号 */
+            transition: all 0.3s ease;
+        }
+
+        #file-list li a:hover {
+            background-color: #c9b78b;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
         }
         
         a {
@@ -75,6 +112,11 @@
             color: black;
             padding: 4px;
             border-radius: 5px;
+            transition: all 0.3s ease;
+        }
+        
+        a:hover {
+            background-color: #8edee4;
         }
         
         #instructions {
@@ -90,6 +132,7 @@
             border-radius: 5px;
             margin-top: 20px;
             cursor: pointer;
+            transition: all 0.3s ease;
         }
 
         #previous-columns-button {
@@ -100,23 +143,13 @@
             border-radius: 5px;
             margin-top: 20px;
             cursor: pointer;
+            transition: all 0.3s ease;
         }
 
-        #file-list {
-            column-count: 1;
-            column-gap: 20px;
-        }
-
-        @media (min-width: 768px) {
-            #file-list {
-                column-count: 2;
-            }
-        }
-
-        @media (min-width: 1024px) {
-            #file-list {
-                column-count: 3;
-            }
+        #next-columns-button:hover,
+        #previous-columns-button:hover {
+            background-color: #81a9e0;
+            transform: translateY(-2px);
         }
     </style>
 </head>
@@ -140,7 +173,9 @@
         <div id="loading-container">
             <div id="loading-status">Loading...</div>
             <div id="loading-progress">
-                <div id="loading-bar"></div>
+                <div id="loading-bar">
+                    <div id="loading-percentage">0%</div>
+                </div>
             </div>
         </div>
         <p id="error-message"></p>
@@ -148,6 +183,9 @@
     </div>
 
     <script>
+        // Google Drive文件夹ID常量
+        const GOOGLE_DRIVE_FOLDER_ID = '1SGH3GtEY-AQ0NtceQI9HW8rdkWANIjqa';
+        
         // 检测设备类型
         function isMobileDevice() {
             return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
@@ -168,22 +206,22 @@
 
             // 等待Three.js加载完成后继续
             threeJsScript.onload = function() {
-                // 加载OBJ加载器
-                const objLoaderScript = document.createElement('script');
+                // 加载GLTFLoader
+                const gltfLoaderScript = document.createElement('script');
                 if (isMobileDevice()) {
-                    objLoaderScript.src = 'https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/loaders/OBJLoader.min.js';
+                    gltfLoaderScript.src = 'https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/loaders/GLTFLoader.min.js';
                 } else {
-                    objLoaderScript.src = 'https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/loaders/OBJLoader.js';
+                    gltfLoaderScript.src = 'https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/loaders/GLTFLoader.js';
                     
                     // 桌面端还需要轨道控制器
                     const orbitControlsScript = document.createElement('script');
                     orbitControlsScript.src = 'https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/controls/OrbitControls.js';
                     document.head.appendChild(orbitControlsScript);
                 }
-                document.head.appendChild(objLoaderScript);
+                document.head.appendChild(gltfLoaderScript);
 
-                // 等待OBJ加载器加载完成后初始化查看器
-                objLoaderScript.onload = function() {
+                // 等待GLTFLoader加载完成后初始化查看器
+                gltfLoaderScript.onload = function() {
                     // 初始化Google API
                     function handleClientLoad() {
                         gapi.load('client', initClient);
@@ -215,8 +253,8 @@
                         controls: null,
                         currentModel: null,
                         currentOffset: 0,
-                        itemsPerColumn: 3,
-                        columnsToShow: 1, // 移动端每次只显示1列
+                        itemsPerColumn: 10, // 增加每行显示数量
+                        columnsToShow: 1,
                         
                         init() {
                             const viewerContainer = document.getElementById('viewer-container');
@@ -228,8 +266,13 @@
                             this.renderer.setSize(viewerContainer.clientWidth, viewerContainer.clientHeight);
                             viewerContainer.appendChild(this.renderer.domElement);
                             
-                            const Light = new THREE.AmbientLight(0xffffff);
-                            this.scene.add(Light);
+                            // 添加环境光和方向光以获得更好的渲染效果
+                            const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+                            this.scene.add(ambientLight);
+                            
+                            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+                            directionalLight.position.set(1, 1, 1);
+                            this.scene.add(directionalLight);
                             
                             this.camera.position.z = 5;
                             
@@ -255,7 +298,7 @@
                             this.renderer.setSize(viewerContainer.clientWidth, viewerContainer.clientHeight);
                         },
                         
-                        loadOBJ(data) {
+                        loadGLB(gltf) {
                             const loadingContainer = document.getElementById('loading-container');
                             const errorMessage = document.getElementById('error-message');
                             
@@ -266,27 +309,15 @@
                             }
                             
                             try {
-                                const loader = new THREE.OBJLoader();
-                                const object = loader.parse(data);
-                                this.currentModel = object;
-                                
-                                // 简化模型处理 - 降低面数
-                                if (object.children.length > 0) {
-                                    for (let i = 0; i < object.children.length; i++) {
-                                        if (object.children[i].isMesh) {
-                                            // 简化材质
-                                            object.children[i].material = new THREE.MeshBasicMaterial({color: 0xaaaaaa});
-                                        }
-                                    }
-                                }
+                                this.currentModel = gltf.scene;
                                 
                                 // Calculate the bounding box of the object
-                                const box = new THREE.Box3().setFromObject(object);
+                                const box = new THREE.Box3().setFromObject(this.currentModel);
                                 const center = box.getCenter(new THREE.Vector3());
                                 const size = box.getSize(new THREE.Vector3());
                                 
                                 // Center the object
-                                object.position.sub(center);
+                                this.currentModel.position.sub(center);
                                 
                                 // Fit the object in the window
                                 const maxSize = Math.max(size.x, size.y, size.z);
@@ -297,11 +328,11 @@
                                 this.camera.position.z = distance;
                                 this.camera.lookAt(new THREE.Vector3());
                                 
-                                this.scene.add(object);
+                                this.scene.add(this.currentModel);
                                 this.animate();
                             } catch (error) {
-                                errorMessage.textContent = `Error parsing model: ${error.message}`;
-                                console.error('Model parsing error:', error);
+                                errorMessage.textContent = `Error processing model: ${error.message}`;
+                                console.error('Model processing error:', error);
                             }
                         },
                         
@@ -327,12 +358,19 @@
                             
                             errorMessage.textContent = '';
                             try {
+                                // 修改查询条件，只查找GLB文件
                                 const response = await gapi.client.drive.files.list({
-                                    q: `'1SGH3GtEY-AQ0NtceQI9HW8rdkWANIjqa' in parents and (mimeType contains 'application' or mimeType contains 'text')`,
-                                    fields: 'files(id, name, mimeType, size)'
+                                    q: `'${GOOGLE_DRIVE_FOLDER_ID}' in parents and name contains '.glb'`,
+                                    fields: 'files(id, name, mimeType, size)',
+                                    orderBy: 'name'
                                 });
                                 console.log('Full API response for files.list:', response);
-                                const files = response.result.files.filter(file => file.name.endsWith('.obj'));
+                                
+                                if (!response.result || !response.result.files) {
+                                    throw new Error('No files returned from Google Drive API');
+                                }
+                                
+                                const files = response.result.files;
                                 
                                 // 为文件添加大小信息
                                 files.forEach(file => {
@@ -369,7 +407,7 @@
                                         previousColumnsButton.style.display = 'none';
                                     }
                                     if (fileList.children.length === 0) {
-                                        errorMessage.textContent = 'No small OBJ files found in the folder.';
+                                        errorMessage.textContent = 'No small GLB files found in the folder.';
                                     }
                                 } else {
                                     errorMessage.textContent = 'No files found in the folder or all files are too large for mobile devices.';
@@ -382,48 +420,33 @@
                             }
                         },
                         
-                        // 存储已下载的文件块
-                        downloadedChunks: [],
-                        totalBytesDownloaded: 0,
-                        
                         async loadFile(file) {
                             const loadingContainer = document.getElementById('loading-container');
                             const loadingStatus = document.getElementById('loading-status');
                             const loadingBar = document.getElementById('loading-bar');
+                            const loadingPercentage = document.getElementById('loading-percentage');
                             const errorMessage = document.getElementById('error-message');
                             
                             this.clearModel();
                             loadingContainer.style.display = 'block';
                             loadingStatus.textContent = 'Preparing to load...';
                             loadingBar.style.width = '0%';
+                            loadingPercentage.textContent = '0%';
                             errorMessage.textContent = '';
                             
-                            // 重置下载状态
-                            this.downloadedChunks = [];
-                            this.totalBytesDownloaded = 0;
-                            
                             const MAX_RETRIES = 3; // 减少重试次数
-                            const TIMEOUT_DURATION = 300000; // 减少超时时间到5分钟
-                            const CHUNK_SIZE = 5 * 1024 * 1024; // 移动端使用更小的块大小(5MB)
+                            const TIMEOUT_DURATION = 300000; // 超时时间5分钟
                             const driveBaseUrl = 'https://www.googleapis.com/drive/v3/files/';
                             const apiKey = 'AIzaSyCuxBB6YRLRSP4lquFvOAn3maFtJQQrVZs';
                             
+                            // 尝试从Google Drive API获取的文件信息中获取文件大小
+                            const fileSizeFromApi = file.size ? parseInt(file.size, 10) : null;
+                            
                             let retries = 0;
-                            let fileContent = '';
-                            let estimatedSize = parseInt(file.size, 10) || 20 * 1024 * 1024; // 默认估计20MB
                             
                             while (retries < MAX_RETRIES) {
-                                // 每次重试时重置进度条
-                                loadingBar.style.width = '0%';
-                                loadingStatus.textContent = `Attempt ${retries + 1}/${MAX_RETRIES}...`;
-                                
-                                let startTime = Date.now();
-                                let lastUpdateTime = startTime;
-                                let loadedSize = this.totalBytesDownloaded;
-                                let progressInterval;
-                                
                                 try {
-                                    // 使用fetch获取文件内容，处理大文件和gzip压缩
+                                    // 使用fetch获取文件内容
                                     const fileUrl = `${driveBaseUrl}${file.id}?alt=media&key=${apiKey}`;
                                     
                                     // 创建带超时的fetch请求
@@ -437,20 +460,7 @@
                                     // 显示开始下载的状态
                                     loadingStatus.textContent = 'Starting download...';
                                     
-                                    // 设置Range头实现断点续传
-                                    const headers = {
-                                        'Accept-Encoding': 'gzip, deflate'
-                                    };
-                                    
-                                    if (this.totalBytesDownloaded > 0) {
-                                        headers['Range'] = `bytes=${this.totalBytesDownloaded}-`;
-                                        loadingStatus.textContent = `Resuming download from ${(this.totalBytesDownloaded / (1024 * 1024)).toFixed(2)} MB...`;
-                                    }
-                                    
-                                    const response = await fetch(fileUrl, {
-                                        signal,
-                                        headers
-                                    });
+                                    const response = await fetch(fileUrl, { signal });
                                     
                                     clearTimeout(timeoutId); // 清除超时计时器
                                     
@@ -459,120 +469,66 @@
                                     }
                                     
                                     // 尝试获取实际内容长度
-                                    const contentLengthHeader = response.headers.get('content-length');
-                                    const contentRangeHeader = response.headers.get('content-range');
+                                    const contentLength = response.headers.get('content-length');
+                                    const fileSizeFromResponse = contentLength ? parseInt(contentLength, 10) : null;
                                     
-                                    let contentLength;
-                                    if (contentRangeHeader) {
-                                        // 解析Content-Range头获取完整文件大小
-                                        const match = contentRangeHeader.match(/\/(\d+)$/);
-                                        if (match) {
-                                            estimatedSize = parseInt(match[1], 10);
-                                        }
-                                    }
+                                    // 优先使用Google Drive API返回的文件大小，其次使用响应头中的大小
+                                    const fileSize = fileSizeFromApi || fileSizeFromResponse;
                                     
-                                    if (contentLengthHeader) {
-                                        contentLength = parseInt(contentLengthHeader, 10);
-                                        // 如果是断点续传，更新已下载大小
-                                        if (this.totalBytesDownloaded > 0) {
-                                            estimatedSize = this.totalBytesDownloaded + contentLength;
-                                        } else {
-                                            estimatedSize = contentLength;
-                                        }
-                                    }
+                                    // 确保文件大小正确显示
+                                    const formattedFileSize = fileSize 
+                                        ? `${(fileSize / (1024 * 1024)).toFixed(2)} MB` 
+                                        : '? MB';
                                     
-                                    // 处理流式响应
-                                    const reader = response.body.getReader();
-                                    const decoder = new TextDecoder('utf-8');
-                                    let chunks = [];
-                                    let done = false;
+                                    // 创建加载器实例
+                                    const loader = new THREE.GLTFLoader();
                                     
-                                    // 启动进度更新定时器
-                                    progressInterval = setInterval(() => {
-                                        const elapsed = (Date.now() - startTime) / 1000;
-                                        const speed = loadedSize / elapsed / 1024; // KB/s
-                                        const estimatedRemaining = estimatedSize 
-                                            ? (estimatedSize - loadedSize) / speed / 1000 
-                                            : Math.max(10 - elapsed, 0);
-                                        
-                                        const progressPercent = estimatedSize 
-                                            ? Math.min((loadedSize / estimatedSize) * 100, 100) 
-                                            : Math.min((elapsed / (elapsed + estimatedRemaining)) * 100, 95);
-                                        
-                                        loadingBar.style.width = `${progressPercent}%`;
-                                        
-                                        if (estimatedSize) {
-                                            const loadedMB = (loadedSize / (1024 * 1024)).toFixed(2);
-                                            const totalMB = (estimatedSize / (1024 * 1024)).toFixed(2);
-                                            loadingStatus.textContent = `Downloading: ${loadedMB}/${totalMB} MB (${Math.round(progressPercent)}%) at ${speed.toFixed(2)} KB/s`;
-                                        } else {
-                                            const loadedMB = (loadedSize / (1024 * 1024)).toFixed(2);
-                                            loadingStatus.textContent = `Downloading: ${loadedMB} MB (${Math.round(progressPercent)}%) at ${speed.toFixed(2)} KB/s`;
-                                        }
-                                    }, 1000);
-                                    
-                                    loadingStatus.textContent = 'Downloading...';
-                                    
-                                    while (!done) {
-                                        const { value, done: doneReading } = await reader.read();
-                                        done = doneReading;
-                                        
-                                        if (value) {
-                                            // 分块处理，避免内存溢出
-                                            loadedSize += value.byteLength;
-                                            this.totalBytesDownloaded += value.byteLength;
+                                    // 设置加载进度回调
+                                    loader.load(
+                                        fileUrl,
+                                        (gltf) => {
+                                            // 成功加载
+                                            this.loadGLB(gltf);
+                                            loadingStatus.textContent = 'Loading Complete';
+                                            loadingBar.style.width = '100%';
+                                            loadingPercentage.textContent = '100%';
                                             
-                                            // 每5秒更新一次进度
-                                            const now = Date.now();
-                                            if (now - lastUpdateTime > 5000) {
-                                                lastUpdateTime = now;
-                                            }
+                                            // 3秒后自动隐藏加载提示
+                                            setTimeout(() => {
+                                                loadingContainer.style.display = 'none';
+                                            }, 3000);
+                                        },
+                                        (progress) => {
+                                            // 计算已加载大小和百分比
+                                            const loadedMB = (progress.loaded / (1024 * 1024)).toFixed(2);
                                             
-                                            // 保存当前块
-                                            chunks.push(value);
+                                            // 优先使用Google Drive API的文件大小，其次使用progress.total
+                                            const totalSize = fileSize || progress.total;
                                             
-                                            // 每下载5MB合并一次块并释放内存
-                                            if (chunks.reduce((sum, chunk) => sum + chunk.byteLength, 0) > CHUNK_SIZE) {
-                                                const mergedChunk = this.mergeChunks(chunks);
-                                                this.downloadedChunks.push(mergedChunk);
-                                                chunks = [];
-                                            }
+                                            // 计算百分比，确保不超过100%
+                                            const percent = totalSize 
+                                                ? Math.min(100, Math.round((progress.loaded / totalSize) * 100)) 
+                                                : Math.round((progress.loaded / (progress.total || 1)) * 100);
+                                            
+                                            // 更新进度条和百分比显示
+                                            loadingBar.style.width = `${percent}%`;
+                                            loadingPercentage.textContent = `${percent}%`;
+                                            
+                                            // 更新加载状态文本，显示(已加载大小)/(总文件大小) (百分比%)格式
+                                            const sizeInfo = totalSize 
+                                                ? `${loadedMB} MB / ${(totalSize / (1024 * 1024)).toFixed(2)} MB` 
+                                                : `${loadedMB} MB / ? MB`;
+                                            
+                                            loadingStatus.textContent = `Downloading: ${sizeInfo} (${percent}%)`;
+                                        },
+                                        (error) => {
+                                            throw new Error(`Failed to load model: ${error.message}`);
                                         }
-                                    }
+                                    );
                                     
-                                    // 合并剩余的块
-                                    if (chunks.length > 0) {
-                                        const mergedChunk = this.mergeChunks(chunks);
-                                        this.downloadedChunks.push(mergedChunk);
-                                    }
-                                    
-                                    // 清除进度更新定时器
-                                    clearInterval(progressInterval);
-                                    
-                                    // 检查是否下载完成
-                                    if (!estimatedSize || this.totalBytesDownloaded >= estimatedSize) {
-                                        // 确保进度条显示100%
-                                        loadingBar.style.width = '100%';
-                                        loadingStatus.textContent = 'Download complete. Processing...';
-                                        
-                                        // 合并所有块并解码为文本
-                                        const completeBuffer = this.mergeChunks(this.downloadedChunks);
-                                        fileContent = decoder.decode(completeBuffer);
-                                        
-                                        if (!fileContent.trim()) {
-                                            throw new Error('File content is empty');
-                                        }
-                                        
-                                        // 成功获取文件内容，跳出重试循环
-                                        break;
-                                    } else {
-                                        // 未完成，继续下载
-                                        loadingStatus.textContent = `Download paused at ${(this.totalBytesDownloaded / (1024 * 1024)).toFixed(2)} MB. Resuming...`;
-                                    }
+                                    // 成功开始加载，跳出重试循环
+                                    break;
                                 } catch (error) {
-                                    // 清除进度更新定时器
-                                    clearInterval(progressInterval);
-                                    
                                     retries++;
                                     if (retries >= MAX_RETRIES) {
                                         loadingContainer.style.display = 'none';
@@ -585,66 +541,6 @@
                                     }
                                 }
                             }
-                            
-                            try {
-                                // 显示解析进度
-                                loadingStatus.textContent = 'Parsing model...';
-                                loadingBar.style.width = '0%';
-                                
-                                // 分块解析大文件以避免阻塞UI线程
-                                const parseModel = () => {
-                                    return new Promise(resolve => {
-                                        // 安排在下一帧执行，避免长时间阻塞UI
-                                        requestAnimationFrame(() => {
-                                            this.loadOBJ(fileContent);
-                                            resolve();
-                                        });
-                                    });
-                                };
-                                
-                                await parseModel();
-                                
-                                loadingStatus.textContent = 'Loading Complete';
-                                loadingBar.style.width = '100%';
-                                
-                                // 重置下载状态
-                                this.downloadedChunks = [];
-                                this.totalBytesDownloaded = 0;
-                                
-                                // 3秒后自动隐藏加载提示
-                                setTimeout(() => {
-                                    loadingContainer.style.display = 'none';
-                                }, 3000);
-                            } catch (error) {
-                                // 重置下载状态
-                                this.downloadedChunks = [];
-                                this.totalBytesDownloaded = 0;
-                                
-                                loadingContainer.style.display = 'none';
-                                errorMessage.textContent = `Error processing file: ${error.message}`;
-                                console.error('File processing error:', error);
-                            }
-                        },
-                        
-                        // 合并多个ArrayBuffer
-                        mergeChunks(chunks) {
-                            if (chunks.length === 0) return new Uint8Array(0);
-                            if (chunks.length === 1) return chunks[0];
-                            
-                            // 计算总大小
-                            const totalLength = chunks.reduce((sum, chunk) => sum + chunk.byteLength, 0);
-                            
-                            // 创建新的ArrayBuffer
-                            const result = new Uint8Array(totalLength);
-                            let offset = 0;
-                            
-                            // 复制所有块
-                            chunks.forEach(chunk => {
-                                result.set(new Uint8Array(chunk), offset);
-                                offset += chunk.byteLength;
-                            });
-                            
-                            return result.buffer;
                         }
                     };
 
@@ -656,7 +552,7 @@
                         controls: null,
                         currentModel: null,
                         currentOffset: 0,
-                        itemsPerColumn: 3,
+                        itemsPerColumn: 10, // 增加每行显示数量
                         columnsToShow: 2,
                         
                         init() {
@@ -669,8 +565,13 @@
                             this.renderer.setSize(viewerContainer.clientWidth, viewerContainer.clientHeight);
                             viewerContainer.appendChild(this.renderer.domElement);
                             
-                            const Light = new THREE.AmbientLight(0xffffff);
-                            this.scene.add(Light);
+                            // 添加环境光和方向光以获得更好的渲染效果
+                            const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+                            this.scene.add(ambientLight);
+                            
+                            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+                            directionalLight.position.set(1, 1, 1);
+                            this.scene.add(directionalLight);
                             
                             this.camera.position.z = 5;
                             
@@ -692,7 +593,7 @@
                             this.renderer.setSize(viewerContainer.clientWidth, viewerContainer.clientHeight);
                         },
                         
-                        loadOBJ(data) {
+                        loadGLB(gltf) {
                             const loadingContainer = document.getElementById('loading-container');
                             const errorMessage = document.getElementById('error-message');
                             
@@ -703,17 +604,15 @@
                             }
                             
                             try {
-                                const loader = new THREE.OBJLoader();
-                                const object = loader.parse(data);
-                                this.currentModel = object;
+                                this.currentModel = gltf.scene;
                                 
                                 // Calculate the bounding box of the object
-                                const box = new THREE.Box3().setFromObject(object);
+                                const box = new THREE.Box3().setFromObject(this.currentModel);
                                 const center = box.getCenter(new THREE.Vector3());
                                 const size = box.getSize(new THREE.Vector3());
                                 
                                 // Center the object
-                                object.position.sub(center);
+                                this.currentModel.position.sub(center);
                                 
                                 // Fit the object in the window
                                 const maxSize = Math.max(size.x, size.y, size.z);
@@ -724,11 +623,11 @@
                                 this.camera.position.z = distance;
                                 this.camera.lookAt(new THREE.Vector3());
                                 
-                                this.scene.add(object);
+                                this.scene.add(this.currentModel);
                                 this.animate();
                             } catch (error) {
-                                errorMessage.textContent = `Error parsing model: ${error.message}`;
-                                console.error('Model parsing error:', error);
+                                errorMessage.textContent = `Error processing model: ${error.message}`;
+                                console.error('Model processing error:', error);
                             }
                         },
                         
@@ -754,12 +653,19 @@
                             
                             errorMessage.textContent = '';
                             try {
+                                // 修改查询条件，只查找GLB文件
                                 const response = await gapi.client.drive.files.list({
-                                    q: `'1SGH3GtEY-AQ0NtceQI9HW8rdkWANIjqa' in parents and (mimeType contains 'application' or mimeType contains 'text')`,
-                                    fields: 'files(id, name, mimeType, size)'
+                                    q: `'${GOOGLE_DRIVE_FOLDER_ID}' in parents and name contains '.glb'`,
+                                    fields: 'files(id, name, mimeType, size)',
+                                    orderBy: 'name'
                                 });
                                 console.log('Full API response for files.list:', response);
-                                const files = response.result.files.filter(file => file.name.endsWith('.obj'));
+                                
+                                if (!response.result || !response.result.files) {
+                                    throw new Error('No files returned from Google Drive API');
+                                }
+                                
+                                const files = response.result.files;
                                 
                                 // 为文件添加大小信息
                                 files.forEach(file => {
@@ -793,7 +699,7 @@
                                         previousColumnsButton.style.display = 'none';
                                     }
                                     if (fileList.children.length === 0) {
-                                        errorMessage.textContent = 'No OBJ files found in the folder.';
+                                        errorMessage.textContent = 'No GLB files found in the folder.';
                                     }
                                 } else {
                                     errorMessage.textContent = 'No files found in the folder.';
@@ -806,48 +712,33 @@
                             }
                         },
                         
-                        // 存储已下载的文件块
-                        downloadedChunks: [],
-                        totalBytesDownloaded: 0,
-                        
                         async loadFile(file) {
                             const loadingContainer = document.getElementById('loading-container');
                             const loadingStatus = document.getElementById('loading-status');
                             const loadingBar = document.getElementById('loading-bar');
+                            const loadingPercentage = document.getElementById('loading-percentage');
                             const errorMessage = document.getElementById('error-message');
                             
                             this.clearModel();
                             loadingContainer.style.display = 'block';
                             loadingStatus.textContent = 'Preparing to load...';
                             loadingBar.style.width = '0%';
+                            loadingPercentage.textContent = '0%';
                             errorMessage.textContent = '';
-                            
-                            // 重置下载状态
-                            this.downloadedChunks = [];
-                            this.totalBytesDownloaded = 0;
                             
                             const MAX_RETRIES = 5; // 增加最大重试次数
                             const TIMEOUT_DURATION = 600000; // 增加超时时间到10分钟
-                            const CHUNK_SIZE = 10 * 1024 * 1024; // 10MB chunks for processing
                             const driveBaseUrl = 'https://www.googleapis.com/drive/v3/files/';
                             const apiKey = 'AIzaSyCuxBB6YRLRSP4lquFvOAn3maFtJQQrVZs';
                             
+                            // 尝试从Google Drive API获取的文件信息中获取文件大小
+                            const fileSizeFromApi = file.size ? parseInt(file.size, 10) : null;
+                            
                             let retries = 0;
-                            let fileContent = '';
-                            let estimatedSize = parseInt(file.size, 10) || 50 * 1024 * 1024; // 默认估计50MB
                             
                             while (retries < MAX_RETRIES) {
-                                // 每次重试时重置进度条
-                                loadingBar.style.width = '0%';
-                                loadingStatus.textContent = `Attempt ${retries + 1}/${MAX_RETRIES}...`;
-                                
-                                let startTime = Date.now();
-                                let lastUpdateTime = startTime;
-                                let loadedSize = this.totalBytesDownloaded;
-                                let progressInterval;
-                                
                                 try {
-                                    // 使用fetch获取文件内容，处理大文件和gzip压缩
+                                    // 使用fetch获取文件内容
                                     const fileUrl = `${driveBaseUrl}${file.id}?alt=media&key=${apiKey}`;
                                     
                                     // 创建带超时的fetch请求
@@ -861,20 +752,7 @@
                                     // 显示开始下载的状态
                                     loadingStatus.textContent = 'Starting download...';
                                     
-                                    // 设置Range头实现断点续传
-                                    const headers = {
-                                        'Accept-Encoding': 'gzip, deflate'
-                                    };
-                                    
-                                    if (this.totalBytesDownloaded > 0) {
-                                        headers['Range'] = `bytes=${this.totalBytesDownloaded}-`;
-                                        loadingStatus.textContent = `Resuming download from ${(this.totalBytesDownloaded / (1024 * 1024)).toFixed(2)} MB...`;
-                                    }
-                                    
-                                    const response = await fetch(fileUrl, {
-                                        signal,
-                                        headers
-                                    });
+                                    const response = await fetch(fileUrl, { signal });
                                     
                                     clearTimeout(timeoutId); // 清除超时计时器
                                     
@@ -883,120 +761,66 @@
                                     }
                                     
                                     // 尝试获取实际内容长度
-                                    const contentLengthHeader = response.headers.get('content-length');
-                                    const contentRangeHeader = response.headers.get('content-range');
+                                    const contentLength = response.headers.get('content-length');
+                                    const fileSizeFromResponse = contentLength ? parseInt(contentLength, 10) : null;
                                     
-                                    let contentLength;
-                                    if (contentRangeHeader) {
-                                        // 解析Content-Range头获取完整文件大小
-                                        const match = contentRangeHeader.match(/\/(\d+)$/);
-                                        if (match) {
-                                            estimatedSize = parseInt(match[1], 10);
-                                        }
-                                    }
+                                    // 优先使用Google Drive API返回的文件大小，其次使用响应头中的大小
+                                    const fileSize = fileSizeFromApi || fileSizeFromResponse;
                                     
-                                    if (contentLengthHeader) {
-                                        contentLength = parseInt(contentLengthHeader, 10);
-                                        // 如果是断点续传，更新已下载大小
-                                        if (this.totalBytesDownloaded > 0) {
-                                            estimatedSize = this.totalBytesDownloaded + contentLength;
-                                        } else {
-                                            estimatedSize = contentLength;
-                                        }
-                                    }
+                                    // 确保文件大小正确显示
+                                    const formattedFileSize = fileSize 
+                                        ? `${(fileSize / (1024 * 1024)).toFixed(2)} MB` 
+                                        : '? MB';
                                     
-                                    // 处理流式响应
-                                    const reader = response.body.getReader();
-                                    const decoder = new TextDecoder('utf-8');
-                                    let chunks = [];
-                                    let done = false;
+                                    // 创建加载器实例
+                                    const loader = new THREE.GLTFLoader();
                                     
-                                    // 启动进度更新定时器
-                                    progressInterval = setInterval(() => {
-                                        const elapsed = (Date.now() - startTime) / 1000;
-                                        const speed = loadedSize / elapsed / 1024; // KB/s
-                                        const estimatedRemaining = estimatedSize 
-                                            ? (estimatedSize - loadedSize) / speed / 1000 
-                                            : Math.max(10 - elapsed, 0);
-                                        
-                                        const progressPercent = estimatedSize 
-                                            ? Math.min((loadedSize / estimatedSize) * 100, 100) 
-                                            : Math.min((elapsed / (elapsed + estimatedRemaining)) * 100, 95);
-                                        
-                                        loadingBar.style.width = `${progressPercent}%`;
-                                        
-                                        if (estimatedSize) {
-                                            const loadedMB = (loadedSize / (1024 * 1024)).toFixed(2);
-                                            const totalMB = (estimatedSize / (1024 * 1024)).toFixed(2);
-                                            loadingStatus.textContent = `Downloading: ${loadedMB}/${totalMB} MB (${Math.round(progressPercent)}%) at ${speed.toFixed(2)} KB/s`;
-                                        } else {
-                                            const loadedMB = (loadedSize / (1024 * 1024)).toFixed(2);
-                                            loadingStatus.textContent = `Downloading: ${loadedMB} MB (${Math.round(progressPercent)}%) at ${speed.toFixed(2)} KB/s`;
-                                        }
-                                    }, 1000);
-                                    
-                                    loadingStatus.textContent = 'Downloading...';
-                                    
-                                    while (!done) {
-                                        const { value, done: doneReading } = await reader.read();
-                                        done = doneReading;
-                                        
-                                        if (value) {
-                                            // 分块处理，避免内存溢出
-                                            loadedSize += value.byteLength;
-                                            this.totalBytesDownloaded += value.byteLength;
+                                    // 设置加载进度回调
+                                    loader.load(
+                                        fileUrl,
+                                        (gltf) => {
+                                            // 成功加载
+                                            this.loadGLB(gltf);
+                                            loadingStatus.textContent = 'Loading Complete';
+                                            loadingBar.style.width = '100%';
+                                            loadingPercentage.textContent = '100%';
                                             
-                                            // 每5秒更新一次进度
-                                            const now = Date.now();
-                                            if (now - lastUpdateTime > 5000) {
-                                                lastUpdateTime = now;
-                                            }
+                                            // 3秒后自动隐藏加载提示
+                                            setTimeout(() => {
+                                                loadingContainer.style.display = 'none';
+                                            }, 3000);
+                                        },
+                                        (progress) => {
+                                            // 计算已加载大小和百分比
+                                            const loadedMB = (progress.loaded / (1024 * 1024)).toFixed(2);
                                             
-                                            // 保存当前块
-                                            chunks.push(value);
+                                            // 优先使用Google Drive API的文件大小，其次使用progress.total
+                                            const totalSize = fileSize || progress.total;
                                             
-                                            // 每下载10MB合并一次块并释放内存
-                                            if (chunks.reduce((sum, chunk) => sum + chunk.byteLength, 0) > CHUNK_SIZE) {
-                                                const mergedChunk = this.mergeChunks(chunks);
-                                                this.downloadedChunks.push(mergedChunk);
-                                                chunks = [];
-                                            }
+                                            // 计算百分比，确保不超过100%
+                                            const percent = totalSize 
+                                                ? Math.min(100, Math.round((progress.loaded / totalSize) * 100)) 
+                                                : Math.round((progress.loaded / (progress.total || 1)) * 100);
+                                            
+                                            // 更新进度条和百分比显示
+                                            loadingBar.style.width = `${percent}%`;
+                                            loadingPercentage.textContent = `${percent}%`;
+                                            
+                                            // 更新加载状态文本，显示(已加载大小)/(总文件大小) (百分比%)格式
+                                            const sizeInfo = totalSize 
+                                                ? `${loadedMB} MB / ${(totalSize / (1024 * 1024)).toFixed(2)} MB` 
+                                                : `${loadedMB} MB / ? MB`;
+                                            
+                                            loadingStatus.textContent = `Downloading: ${sizeInfo} (${percent}%)`;
+                                        },
+                                        (error) => {
+                                            throw new Error(`Failed to load model: ${error.message}`);
                                         }
-                                    }
+                                    );
                                     
-                                    // 合并剩余的块
-                                    if (chunks.length > 0) {
-                                        const mergedChunk = this.mergeChunks(chunks);
-                                        this.downloadedChunks.push(mergedChunk);
-                                    }
-                                    
-                                    // 清除进度更新定时器
-                                    clearInterval(progressInterval);
-                                    
-                                    // 检查是否下载完成
-                                    if (!estimatedSize || this.totalBytesDownloaded >= estimatedSize) {
-                                        // 确保进度条显示100%
-                                        loadingBar.style.width = '100%';
-                                        loadingStatus.textContent = 'Download complete. Processing...';
-                                        
-                                        // 合并所有块并解码为文本
-                                        const completeBuffer = this.mergeChunks(this.downloadedChunks);
-                                        fileContent = decoder.decode(completeBuffer);
-                                        
-                                        if (!fileContent.trim()) {
-                                            throw new Error('File content is empty');
-                                        }
-                                        
-                                        // 成功获取文件内容，跳出重试循环
-                                        break;
-                                    } else {
-                                        // 未完成，继续下载
-                                        loadingStatus.textContent = `Download paused at ${(this.totalBytesDownloaded / (1024 * 1024)).toFixed(2)} MB. Resuming...`;
-                                    }
+                                    // 成功开始加载，跳出重试循环
+                                    break;
                                 } catch (error) {
-                                    // 清除进度更新定时器
-                                    clearInterval(progressInterval);
-                                    
                                     retries++;
                                     if (retries >= MAX_RETRIES) {
                                         loadingContainer.style.display = 'none';
@@ -1009,66 +833,6 @@
                                     }
                                 }
                             }
-                            
-                            try {
-                                // 显示解析进度
-                                loadingStatus.textContent = 'Parsing model...';
-                                loadingBar.style.width = '0%';
-                                
-                                // 分块解析大文件以避免阻塞UI线程
-                                const parseModel = () => {
-                                    return new Promise(resolve => {
-                                        // 安排在下一帧执行，避免长时间阻塞UI
-                                        requestAnimationFrame(() => {
-                                            this.loadOBJ(fileContent);
-                                            resolve();
-                                        });
-                                    });
-                                };
-                                
-                                await parseModel();
-                                
-                                loadingStatus.textContent = 'Loading Complete';
-                                loadingBar.style.width = '100%';
-                                
-                                // 重置下载状态
-                                this.downloadedChunks = [];
-                                this.totalBytesDownloaded = 0;
-                                
-                                // 3秒后自动隐藏加载提示
-                                setTimeout(() => {
-                                    loadingContainer.style.display = 'none';
-                                }, 3000);
-                            } catch (error) {
-                                // 重置下载状态
-                                this.downloadedChunks = [];
-                                this.totalBytesDownloaded = 0;
-                                
-                                loadingContainer.style.display = 'none';
-                                errorMessage.textContent = `Error processing file: ${error.message}`;
-                                console.error('File processing error:', error);
-                            }
-                        },
-                        
-                        // 合并多个ArrayBuffer
-                        mergeChunks(chunks) {
-                            if (chunks.length === 0) return new Uint8Array(0);
-                            if (chunks.length === 1) return chunks[0];
-                            
-                            // 计算总大小
-                            const totalLength = chunks.reduce((sum, chunk) => sum + chunk.byteLength, 0);
-                            
-                            // 创建新的ArrayBuffer
-                            const result = new Uint8Array(totalLength);
-                            let offset = 0;
-                            
-                            // 复制所有块
-                            chunks.forEach(chunk => {
-                                result.set(new Uint8Array(chunk), offset);
-                                offset += chunk.byteLength;
-                            });
-                            
-                            return result.buffer;
                         }
                     };
 
